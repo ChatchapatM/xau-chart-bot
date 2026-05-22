@@ -18,10 +18,10 @@ SYMBOL             = "OANDA:XAUUSD"
 TZ_THAI            = pytz.timezone("Asia/Bangkok")
 
 TIMEFRAMES = {
-    "H1":  "60",
-    "M30": "30",
-    "M15": "15",
-    "M5":  "5",
+    "H1":  "1h",
+    "M30": "30m",
+    "M15": "15m",
+    "M5":  "5m",
 }
 
 # ============================================================
@@ -36,24 +36,37 @@ tree = bot.tree
 #  ดึงกราฟจาก chart-img.com
 # ============================================================
 async def fetch_chart(timeframe: str) -> bytes | None:
-    interval = TIMEFRAMES.get(timeframe, "60")
-    url = (
-        f"https://api.chart-img.com/v1/tradingview/advanced-chart"
-        f"?key={CHART_IMG_API_KEY}"
-        f"&symbol={SYMBOL}"
-        f"&interval={interval}"
-        f"&studies=EMA@tv-basicstudies%7Clength%3D20"
-        f",EMA@tv-basicstudies%7Clength%3D50"
-        f",EMA@tv-basicstudies%7Clength%3D200"
-        f",Stochastic@tv-basicstudies"
-        f"&width=800&height=600"
-        f"&theme=dark"
-    )
+    interval = TIMEFRAMES.get(timeframe, "1h")
+    headers = {
+        "x-api-key": CHART_IMG_API_KEY,
+        "content-type": "application/json"
+    }
+    payload = {
+        "symbol": SYMBOL,
+        "interval": interval,
+        "theme": "dark",
+        "width": 800,
+        "height": 600,
+        "studies": [
+            {"name": "Moving Average", "input": {"length": 20}},
+            {"name": "Moving Average", "input": {"length": 50}},
+            {"name": "Moving Average", "input": {"length": 200}},
+            {"name": "Stochastic"}
+        ]
+    }
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as r:
+            async with session.post(
+                "https://api.chart-img.com/v2/tradingview/advanced-chart",
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=20)
+            ) as r:
                 if r.status == 200:
                     return await r.read()
+                else:
+                    text = await r.text()
+                    print(f"Chart error ({timeframe}): {r.status} {text}")
     except Exception as e:
         print(f"Chart fetch error ({timeframe}): {e}")
     return None
