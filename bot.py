@@ -48,7 +48,6 @@ async def fetch_chart(timeframe: str) -> bytes | None:
         "width": 800,
         "height": 600,
         "studies": [
-            {"name": "Moving Average", "input": {"length": 20}},
             {"name": "Moving Average", "input": {"length": 50}},
             {"name": "Moving Average", "input": {"length": 200}},
             {"name": "Stochastic"}
@@ -195,7 +194,7 @@ class ChartView(discord.ui.View):
             timestamp=datetime.now(TZ_THAI)
         )
         embed.set_image(url=f"attachment://XAUUSD_{tf}.png")
-        embed.set_footer(text="XAU Chart Bot • EMA 20/50/200 + Stochastic")
+        embed.set_footer(text="XAU Chart Bot • EMA 50/200 + Stochastic")
         await interaction.followup.send(file=file, embed=embed)
 
     async def _fetch_and_analyze(self, interaction, timeframes):
@@ -251,7 +250,7 @@ async def cmd_chart(interaction: discord.Interaction):
         timestamp=now
     )
     embed.add_field(name="Symbol", value="`XAUUSD`", inline=True)
-    embed.add_field(name="Indicators", value="EMA 20/50/200 + Stochastic", inline=True)
+    embed.add_field(name="Indicators", value="EMA 50/200 + Stochastic", inline=True)
     embed.set_footer(text="XAU Chart Bot • เวลาไทย (UTC+7)")
     await interaction.response.send_message(embed=embed, view=ChartView())
 
