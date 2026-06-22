@@ -18,7 +18,8 @@ CHART_IMG_API_KEY  = os.environ["CHART_IMG_API_KEY"]
 SYMBOL             = "OANDA:XAUUSD"
 TZ_THAI            = pytz.timezone("Asia/Bangkok")
 CHART_CHANNEL_NAME = "ccpro-ai-strategy" # ← ส่ง morning chart เข้าช่องนี้
-MORNING_HOUR       = 8                   # ← 08:00 UTC+7
+MORNING_HOUR       = 13  # ← เปลี่ยนเป็น 8 หลังทดสอบ
+MORNING_MINUTE     = 45  # ← เปลี่ยนเป็น 0 หลังทดสอบ
 
 TIMEFRAMES = {
     "H1":  "1h",
@@ -26,6 +27,16 @@ TIMEFRAMES = {
     "M15": "15m",
     "M5":  "5m",
 }
+
+# ============================================================
+#  CHANNEL FINDER — รองรับ emoji นำหน้าชื่อช่อง เช่น 🍎ccpro-ai-strategy
+# ============================================================
+def find_channel(guild: discord.Guild, name: str) -> discord.TextChannel | None:
+    for ch in guild.text_channels:
+        if ch.name == name: return ch
+    for ch in guild.text_channels:
+        if ch.name.endswith(name): return ch
+    return None
 
 # ============================================================
 #  DISCORD SETUP
@@ -183,13 +194,13 @@ async def send_chart_analysis(channel: discord.TextChannel, label: str = ""):
 async def morning_chart_briefing():
     now = datetime.now(TZ_THAI)
     if now.weekday() > 4: return                              # ข้ามเสาร์-อาทิตย์
-    if now.hour != MORNING_HOUR or now.minute != 0: return   # เฉพาะ 08:00
+    if now.hour != MORNING_HOUR or now.minute != MORNING_MINUTE: return   # เฉพาะ 08:00
 
     try:
         guild = discord.utils.get(bot.guilds)
         if not guild: return
 
-        channel = discord.utils.get(guild.text_channels, name=CHART_CHANNEL_NAME)
+        channel = find_channel(guild, CHART_CHANNEL_NAME)
         if not channel:
             print(f"⚠️ morning_chart_briefing: ไม่เจอช่อง #{CHART_CHANNEL_NAME} (ข้ามรอบนี้)")
             return
@@ -202,7 +213,7 @@ async def morning_chart_briefing():
         print(f"❌ Morning chart briefing error (ไม่กระทบ task อื่น): {e}")
         try:
             guild   = discord.utils.get(bot.guilds)
-            channel = discord.utils.get(guild.text_channels, name=CHART_CHANNEL_NAME) if guild else None
+            channel = find_channel(guild, CHART_CHANNEL_NAME) if guild else None
             if channel:
                 await channel.send(f"⚠️ Morning chart briefing เกิดข้อผิดพลาด: {e}")
         except Exception:
@@ -315,7 +326,7 @@ async def on_ready():
     morning_chart_briefing.start()
     now = datetime.now(TZ_THAI)
     # หาเวลา 08:00 ถัดไป
-    next_8 = now.replace(hour=MORNING_HOUR, minute=0, second=0, microsecond=0)
+    next_8 = now.replace(hour=MORNING_HOUR, minute=MORNING_MINUTE, second=0, microsecond=0)
     if now >= next_8:
         from datetime import timedelta
         next_8 += timedelta(days=1)
@@ -324,12 +335,12 @@ async def on_ready():
 
     # ── Catch-up: ถ้า bot restart หลัง 08:00-08:30 ของวันนี้ (วันธรรมดา) ──
     # จำกัดช่วงเวลาแคบ (08:00-08:30) เพื่อลดความเสี่ยงส่งซ้ำถ้า restart ตอนสายมาก
-    if now.weekday() <= 4 and MORNING_HOUR <= now.hour < MORNING_HOUR + 1 and now.minute <= 30:
+    if now.weekday() <= 4 and now.hour == MORNING_HOUR and MORNING_MINUTE <= now.minute <= MORNING_MINUTE + 30:
         print("🔄 ตรวจพบว่า bot restart ใกล้ช่วง 08:00 — ส่ง chart briefing ที่อาจพลาดไป")
         try:
             guild = discord.utils.get(bot.guilds)
             if guild:
-                channel = discord.utils.get(guild.text_channels, name=CHART_CHANNEL_NAME)
+                channel = find_channel(guild, CHART_CHANNEL_NAME)
                 if channel:
                     label = (f"🌅 **Morning Chart Briefing — {now.strftime('%A %d/%m/%Y')}** "
                               f"_(ส่งย้อนหลังเนื่องจาก bot เพิ่ง restart)_\n"
