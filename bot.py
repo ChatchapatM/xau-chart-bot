@@ -18,8 +18,8 @@ CHART_IMG_API_KEY  = os.environ["CHART_IMG_API_KEY"]
 SYMBOL             = "OANDA:XAUUSD"
 TZ_THAI            = pytz.timezone("Asia/Bangkok")
 CHART_CHANNEL_NAME = "ccpro-ai-strategy" # ← ส่ง morning chart เข้าช่องนี้
-MORNING_HOUR       = 13  # ← เปลี่ยนเป็น 8 หลังทดสอบ
-MORNING_MINUTE     = 45  # ← เปลี่ยนเป็น 0 หลังทดสอบ
+MORNING_HOUR       = 8
+MORNING_MINUTE     = 0
 
 TIMEFRAMES = {
     "H1":  "1h",
