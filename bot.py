@@ -17,7 +17,7 @@ ANTHROPIC_API_KEY  = os.environ["ANTHROPIC_API_KEY"]
 CHART_IMG_API_KEY  = os.environ["CHART_IMG_API_KEY"]
 SYMBOL             = "OANDA:XAUUSD"
 TZ_THAI            = pytz.timezone("Asia/Bangkok")
-CHART_CHANNEL_NAME = "ccpro-ai-strategy" # ← ส่ง morning chart เข้าช่องนี้
+CHART_CHANNEL_NAME = "cordaxa-ai-strategy" # ← ส่ง morning chart เข้าช่องนี้
 MORNING_HOUR       = 8
 MORNING_MINUTE     = 0
 
@@ -29,7 +29,7 @@ TIMEFRAMES = {
 }
 
 # ============================================================
-#  CHANNEL FINDER — รองรับ emoji นำหน้าชื่อช่อง เช่น 🍎ccpro-ai-strategy
+#  CHANNEL FINDER — รองรับ emoji นำหน้าชื่อช่อง เช่น 🍎cordaxa-ai-strategy
 # ============================================================
 def find_channel(guild: discord.Guild, name: str) -> discord.TextChannel | None:
     for ch in guild.text_channels:
