@@ -92,6 +92,8 @@ async def fetch_all_charts() -> dict:
 # ============================================================
 #  AI วิเคราะห์กราฟด้วย Claude Vision
 # ============================================================
+CAUTION_MARKER = "%%CAUTION%%"
+
 async def ai_analyze_chart(images: dict) -> str:
     content = []
     for tf in ["H1", "M30", "M15", "M5"]:
@@ -109,22 +111,48 @@ async def ai_analyze_chart(images: dict) -> str:
             "คุณเป็น Price Action trader เชี่ยวชาญ XAUUSD\n"
             "วิเคราะห์กราฟทั้ง 4 Timeframe (H1, M30, M15, M5) ที่แนบมา\n"
             "โดยใช้ EMA 20/50/200, Stochastic และ Price Action\n\n"
-            "กรุณาวิเคราะห์เป็นภาษาไทย ในรูปแบบนี้:\n\n"
+            "กฎการเขียน (สำคัญมาก):\n"
+            "- เขียนเป็นภาษาไทย\n"
+            "- ห้ามใช้ตาราง markdown (| --- |) เด็ดขาด เพราะ Discord แสดงผลไม่ได้ ให้ใช้ bullet แทน\n"
+            "- ห้ามใช้ heading แบบ ## หรือ ###\n"
+            "- ประเมินก่อนว่าฝั่งไหนได้เปรียบกว่า (Buy หรือ Sell) แล้วเขียนฝั่งนั้นขึ้นก่อนเสมอ\n"
+            "- แต่ละฝั่งต้องจบในบล็อกเดียว: Zone เข้า + เหตุผล + TP1/2/3 + SL อยู่ด้วยกัน "
+            "ห้ามแยก TP/SL ไปรวมไว้หัวข้ออื่น\n\n"
+            "ตอบตามโครงสร้างนี้เป๊ะๆ:\n\n"
             "📊 **ภาพรวมตลาด**\n"
             "- Trend หลัก (H1): ...\n"
-            "- โครงสร้างราคา: ...\n\n"
-            "🎯 **จุดเข้า (Entry)**\n"
-            "- Buy Zone: ...\n"
-            "- Sell Zone: ...\n\n"
-            "✅ **เป้าหมาย (TP)**\n"
-            "- TP1: ...\n"
-            "- TP2: ...\n\n"
-            "🛡️ **จุดตัดขาดทุน (SL)**\n"
-            "- SL Buy: ...\n"
-            "- SL Sell: ...\n\n"
+            "- H1: ...\n"
+            "- M30: ...\n"
+            "- M15: ...\n"
+            "- M5: ...\n\n"
+            "🎯 **จุดเข้า** (ฝั่งที่ได้เปรียบขึ้นก่อน)\n\n"
+            "🔴 **Sell Zone** (หรือ 🟢 **Buy Zone** ถ้า Buy ได้เปรียบ — ใส่คำว่า \"โอกาสสูงกว่า\" ต่อท้ายฝั่งแรก และ \"เทรดระวัง\" ต่อท้ายฝั่งหลัง)\n"
+            "```\n"
+            "Entry  : xxxx - xxxx\n"
+            "เหตุผล :\n"
+            "✦ ...\n"
+            "✦ ...\n"
+            "TP1    : xxxx (เหตุผลสั้นๆ)\n"
+            "TP2    : xxxx (เหตุผลสั้นๆ)\n"
+            "TP3    : xxxx (เหตุผลสั้นๆ)\n"
+            "SL     : xxxx (Risk ~xx pips | R:R ≈ 1:x)\n"
+            "```\n\n"
+            "🟢 **Buy Zone** (ฝั่งที่เหลือ รูปแบบเดียวกันทุกอย่าง)\n"
+            "```\n"
+            "Entry  : ...\n"
+            "เหตุผล :\n"
+            "✦ ...\n"
+            "TP1    : ...\n"
+            "TP2    : ...\n"
+            "TP3    : ...\n"
+            "SL     : ...\n"
+            "```\n\n"
+            f"{CAUTION_MARKER}\n"
             "⚠️ **ข้อควรระวัง**\n"
+            "- ...\n"
             "- ...\n\n"
-            "หมายเหตุ: นี่คือการวิเคราะห์เพื่อประกอบการตัดสินใจเท่านั้น ไม่ใช่คำแนะนำการลงทุน"
+            f"หมายเหตุ: ต้องใส่บรรทัด {CAUTION_MARKER} คั่นก่อนหัวข้อข้อควรระวังเสมอ (ระบบใช้แยกข้อความ)\n"
+            "ปิดท้ายข้อควรระวังด้วย: นี่คือการวิเคราะห์เพื่อประกอบการตัดสินใจเท่านั้น ไม่ใช่คำแนะนำการลงทุน"
         )
     })
 
@@ -134,8 +162,8 @@ async def ai_analyze_chart(images: dict) -> str:
         "content-type": "application/json",
     }
     body = {
-        "model": "claude-sonnet-4-6",   # ← อัปเดตแล้ว
-        "max_tokens": 1000,
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 2000,   # ← เพิ่มจาก 1000 (เดิมโดนตัดกลางคัน)
         "messages": [{"role": "user", "content": content}]
     }
     try:
@@ -143,7 +171,7 @@ async def ai_analyze_chart(images: dict) -> str:
             async with session.post(
                 "https://api.anthropic.com/v1/messages",
                 headers=headers, json=body,
-                timeout=aiohttp.ClientTimeout(total=60)
+                timeout=aiohttp.ClientTimeout(total=90)
             ) as r:
                 data = await r.json(content_type=None)
                 if "content" in data and len(data["content"]) > 0:
@@ -154,12 +182,92 @@ async def ai_analyze_chart(images: dict) -> str:
         return f"❌ เชื่อมต่อไม่ได้: {e}"
     return "❌ ไม่สามารถวิเคราะห์ได้ครับ"
 
+def split_analysis(text: str) -> tuple[str, str | None]:
+    """แยกเนื้อหาวิเคราะห์หลัก กับส่วนข้อควรระวัง (ส่งคนละข้อความ)"""
+    if CAUTION_MARKER in text:
+        main, caution = text.split(CAUTION_MARKER, 1)
+        return main.strip(), caution.strip()
+    # fallback: หา ⚠️ เอง เผื่อ AI ลืมใส่ marker
+    idx = text.find("⚠️")
+    if idx > 0:
+        return text[:idx].strip(), text[idx:].strip()
+    return text.strip(), None
+
+def chunk_text(text: str, limit: int = 4000) -> list[str]:
+    """แบ่งข้อความยาวเกิน limit เป็นหลายก้อน โดยพยายามตัดที่ขึ้นบรรทัดใหม่"""
+    if len(text) <= limit:
+        return [text]
+    chunks, current = [], ""
+    for line in text.split("\n"):
+        if len(current) + len(line) + 1 > limit:
+            chunks.append(current.rstrip())
+            current = ""
+        current += line + "\n"
+    if current.strip():
+        chunks.append(current.rstrip())
+    return chunks
+
 # ============================================================
-#  HELPER — ส่งกราฟ + วิเคราะห์ไปยัง channel
+#  HELPER — embed เมนู /chart (ใช้ซ้ำทั้งใน slash command และต่อท้ายผลวิเคราะห์)
+# ============================================================
+def make_chart_menu_embed() -> discord.Embed:
+    now   = datetime.now(TZ_THAI)
+    embed = discord.Embed(
+        title="📈 XAUUSD Chart Analysis",
+        description=(
+            "กดปุ่มด้านล่างเพื่อดูกราฟหรือวิเคราะห์ครับ\n\n"
+            "**📊 วิเคราะห์ทั้ง 4 Timeframe** — ดึงกราฟ + AI วิเคราะห์ครบ\n"
+            "**H1 / M30 / M15 / M5** — ดูกราฟ Timeframe เดียว"
+        ),
+        color=discord.Color.gold(),
+        timestamp=now
+    )
+    embed.add_field(name="Symbol",     value="`XAUUSD`",                inline=True)
+    embed.add_field(name="Indicators", value="EMA 50/200 + Stochastic", inline=True)
+    embed.set_footer(text="XAU Chart Bot • เวลาไทย (UTC+7)")
+    return embed
+
+# ============================================================
+#  HELPER — ส่งผลวิเคราะห์ (แบ่ง embed หลัก + ข้อควรระวังแยก)
+# ============================================================
+async def send_analysis_embeds(send_func, analysis: str):
+    """send_func = channel.send หรือ interaction.followup.send"""
+    now = datetime.now(TZ_THAI)
+    main, caution = split_analysis(analysis)
+
+    # embed หลัก (แบ่งหลายอันถ้ายาวเกิน 4096)
+    main_chunks = chunk_text(main)
+    for i, chunk in enumerate(main_chunks):
+        embed = discord.Embed(
+            title="🤖 AI วิเคราะห์ XAUUSD — Multi-Timeframe" if i == 0
+                  else "🤖 AI วิเคราะห์ XAUUSD (ต่อ)",
+            description=chunk,
+            color=discord.Color.purple(),
+            timestamp=now
+        )
+        embed.set_footer(
+            text=f"XAU Chart Bot • {now.strftime('%d/%m/%Y %H:%M')} น. • powered by Claude AI"
+        )
+        await send_func(embed=embed)
+
+    # ข้อควรระวัง — แยกเป็นอีกข้อความ (สีส้ม) กันโดนตัด
+    if caution:
+        for i, chunk in enumerate(chunk_text(caution)):
+            c_embed = discord.Embed(
+                title="⚠️ ข้อควรระวัง" if i == 0 else "⚠️ ข้อควรระวัง (ต่อ)",
+                description=chunk,
+                color=discord.Color.orange(),
+                timestamp=now
+            )
+            c_embed.set_footer(text="XAU Chart Bot • powered by Claude AI")
+            await send_func(embed=c_embed)
+
+# ============================================================
+#  HELPER — ส่งกราฟ + วิเคราะห์ไปยัง channel (+ เมนูต่อท้าย)
 # ============================================================
 async def send_chart_analysis(channel: discord.TextChannel, label: str = ""):
-    """ดึงกราฟ + AI วิเคราะห์ แล้วส่งเข้า channel"""
-    now   = datetime.now(TZ_THAI)
+    """ดึงกราฟ + AI วิเคราะห์ แล้วส่งเข้า channel พร้อมเมนู /chart ต่อท้าย"""
+    now    = datetime.now(TZ_THAI)
     images = await fetch_all_charts()
 
     if not images:
@@ -174,18 +282,12 @@ async def send_chart_analysis(channel: discord.TextChannel, label: str = ""):
     header = label or f"📈 **XAUUSD Chart Analysis** — {now.strftime('%d/%m/%Y %H:%M')} น."
     await channel.send(content=header, files=files)
 
-    # AI วิเคราะห์
+    # AI วิเคราะห์ (embed หลัก + ข้อควรระวังแยก)
     analysis = await ai_analyze_chart(images)
-    embed = discord.Embed(
-        title="🤖 AI วิเคราะห์ XAUUSD — Multi-Timeframe",
-        description=analysis,
-        color=discord.Color.purple(),
-        timestamp=now
-    )
-    embed.set_footer(
-        text=f"XAU Chart Bot • {now.strftime('%d/%m/%Y %H:%M')} น. • powered by Claude AI"
-    )
-    await channel.send(embed=embed)
+    await send_analysis_embeds(channel.send, analysis)
+
+    # เมนู /chart ต่อท้ายอัตโนมัติ
+    await channel.send(embed=make_chart_menu_embed(), view=ChartView())
 
 # ============================================================
 #  AUTO MORNING CHART BRIEFING — 08:00 UTC+7 จ-ศ
@@ -282,38 +384,17 @@ class ChartView(discord.ui.View):
             files=files
         )
         analysis = await ai_analyze_chart(images)
-        now   = datetime.now(TZ_THAI)
-        embed = discord.Embed(
-            title="🤖 AI วิเคราะห์ XAUUSD — Multi-Timeframe",
-            description=analysis,
-            color=discord.Color.purple(),
-            timestamp=now
-        )
-        embed.set_footer(
-            text=f"XAU Chart Bot • {now.strftime('%d/%m/%Y %H:%M')} น. • powered by Claude AI"
-        )
-        await interaction.followup.send(embed=embed)
+        await send_analysis_embeds(interaction.followup.send, analysis)
+
+        # เมนู /chart ต่อท้ายอัตโนมัติ
+        await interaction.followup.send(embed=make_chart_menu_embed(), view=ChartView())
 
 # ============================================================
 #  SLASH COMMAND
 # ============================================================
 @tree.command(name="chart", description="ดึงกราฟ XAUUSD พร้อมปุ่มวิเคราะห์")
 async def cmd_chart(interaction: discord.Interaction):
-    now   = datetime.now(TZ_THAI)
-    embed = discord.Embed(
-        title="📈 XAUUSD Chart Analysis",
-        description=(
-            "กดปุ่มด้านล่างเพื่อดูกราฟหรือวิเคราะห์ครับ\n\n"
-            "**📊 วิเคราะห์ทั้ง 4 Timeframe** — ดึงกราฟ + AI วิเคราะห์ครบ\n"
-            "**H1 / M30 / M15 / M5** — ดูกราฟ Timeframe เดียว"
-        ),
-        color=discord.Color.gold(),
-        timestamp=now
-    )
-    embed.add_field(name="Symbol",     value="`XAUUSD`",              inline=True)
-    embed.add_field(name="Indicators", value="EMA 50/200 + Stochastic", inline=True)
-    embed.set_footer(text="XAU Chart Bot • เวลาไทย (UTC+7)")
-    await interaction.response.send_message(embed=embed, view=ChartView())
+    await interaction.response.send_message(embed=make_chart_menu_embed(), view=ChartView())
 
 # ============================================================
 #  BOT EVENTS
