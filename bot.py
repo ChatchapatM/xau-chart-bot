@@ -18,8 +18,19 @@ CHART_IMG_API_KEY  = os.environ["CHART_IMG_API_KEY"]
 SYMBOL             = "OANDA:XAUUSD"
 TZ_THAI            = pytz.timezone("Asia/Bangkok")
 CHART_CHANNEL_NAME = "cordaxa-ai-strategy" # ← ส่ง morning chart เข้าช่องนี้
-MORNING_HOUR       = 8
-MORNING_MINUTE     = 0
+
+# รอบเวลาที่ส่ง Chart Briefing อัตโนมัติ (จันทร์–ศุกร์) — เพิ่ม/ลดได้ที่นี่
+BRIEFING_TIMES = [
+    (8, 0),
+    (13, 0),
+    (18, 0),
+]
+# ข้อความหัวเรื่องแยกตามรอบเวลา (emoji, ชื่อรอบ)
+BRIEFING_LABELS = {
+    8:  ("🌅", "Morning Chart Briefing"),
+    13: ("🌞", "Midday Chart Briefing"),
+    18: ("🌆", "Evening Chart Briefing"),
+}
 
 TIMEFRAMES = {
     "H1":  "1h",
@@ -263,6 +274,15 @@ async def send_analysis_embeds(send_func, analysis: str):
             await send_func(embed=c_embed)
 
 # ============================================================
+#  HELPER — สร้างข้อความ header ตามรอบเวลา (08:00 / 13:00 / 18:00)
+# ============================================================
+def make_briefing_label(now: datetime, restarted: bool = False) -> str:
+    emoji, name = BRIEFING_LABELS.get(now.hour, ("📈", "Chart Briefing"))
+    suffix = " _(ส่งย้อนหลังเนื่องจาก bot เพิ่ง restart)_" if restarted else ""
+    return (f"{emoji} **{name} — {now.strftime('%A %d/%m/%Y')} {now.strftime('%H:%M')} น.**{suffix}\n"
+            f"EMA 50/200 + Stochastic | H1 · M30 · M15 · M5")
+
+# ============================================================
 #  HELPER — ส่งกราฟ + วิเคราะห์ไปยัง channel (+ เมนูต่อท้าย)
 # ============================================================
 async def send_chart_analysis(channel: discord.TextChannel, label: str = ""):
@@ -290,13 +310,20 @@ async def send_chart_analysis(channel: discord.TextChannel, label: str = ""):
     await channel.send(embed=make_chart_menu_embed(), view=ChartView())
 
 # ============================================================
-#  AUTO MORNING CHART BRIEFING — 08:00 UTC+7 จ-ศ
+#  AUTO CHART BRIEFING — 08:00 / 13:00 / 18:00 UTC+7 จ-ศ
 # ============================================================
+_last_sent_slot = None   # (date, hour, minute) — กันส่งซ้ำถ้า loop lag แล้วเช็คนาทีเดิมซ้ำ
+
 @tasks.loop(minutes=1)
 async def morning_chart_briefing():
+    global _last_sent_slot
     now = datetime.now(TZ_THAI)
-    if now.weekday() > 4: return                              # ข้ามเสาร์-อาทิตย์
-    if now.hour != MORNING_HOUR or now.minute != MORNING_MINUTE: return   # เฉพาะ 08:00
+    if now.weekday() > 4: return                                   # ข้ามเสาร์-อาทิตย์
+    if (now.hour, now.minute) not in BRIEFING_TIMES: return         # เฉพาะรอบเวลาที่ตั้งไว้
+
+    slot_key = (now.date(), now.hour, now.minute)
+    if _last_sent_slot == slot_key: return                          # กันยิงซ้ำในนาทีเดียวกัน
+    _last_sent_slot = slot_key
 
     try:
         guild = discord.utils.get(bot.guilds)
@@ -304,20 +331,20 @@ async def morning_chart_briefing():
 
         channel = find_channel(guild, CHART_CHANNEL_NAME)
         if not channel:
-            print(f"⚠️ morning_chart_briefing: ไม่เจอช่อง #{CHART_CHANNEL_NAME} (ข้ามรอบนี้)")
+            print(f"⚠️ chart_briefing: ไม่เจอช่อง #{CHART_CHANNEL_NAME} (ข้ามรอบนี้)")
             return
 
-        print(f"🌅 Morning chart briefing: {now.strftime('%d/%m/%Y %H:%M')}")
-        label = f"🌅 **Morning Chart Briefing — {now.strftime('%A %d/%m/%Y')}**\nEMA 50/200 + Stochastic | H1 · M30 · M15 · M5"
+        print(f"📈 Chart briefing รอบ {now.strftime('%H:%M')}: {now.strftime('%d/%m/%Y %H:%M')}")
+        label = make_briefing_label(now)
         await send_chart_analysis(channel, label)
-        print("✅ Morning chart briefing ส่งแล้ว")
+        print(f"✅ Chart briefing รอบ {now.strftime('%H:%M')} ส่งแล้ว")
     except Exception as e:
-        print(f"❌ Morning chart briefing error (ไม่กระทบ task อื่น): {e}")
+        print(f"❌ Chart briefing error (ไม่กระทบ task อื่น): {e}")
         try:
             guild   = discord.utils.get(bot.guilds)
             channel = find_channel(guild, CHART_CHANNEL_NAME) if guild else None
             if channel:
-                await channel.send(f"⚠️ Morning chart briefing เกิดข้อผิดพลาด: {e}")
+                await channel.send(f"⚠️ Chart briefing เกิดข้อผิดพลาด: {e}")
         except Exception:
             pass
 
@@ -422,30 +449,39 @@ async def on_ready():
     print("✅ Slash commands synced!")
     if not morning_chart_briefing.is_running():
         morning_chart_briefing.start()
-    now = datetime.now(TZ_THAI)
-    # หาเวลา 08:00 ถัดไป
-    next_8 = now.replace(hour=MORNING_HOUR, minute=MORNING_MINUTE, second=0, microsecond=0)
-    if now >= next_8:
-        from datetime import timedelta
-        next_8 += timedelta(days=1)
-    diff = (next_8 - now).total_seconds() / 3600
-    print(f"🌅 Morning chart briefing จะยิงใน {round(diff, 1)} ชม. ({next_8.strftime('%d/%m %H:%M')} UTC+7)")
 
-    # ── Catch-up: ถ้า bot restart หลัง 08:00-08:30 ของวันนี้ (วันธรรมดา) ──
-    # จำกัดช่วงเวลาแคบ (08:00-08:30) เพื่อลดความเสี่ยงส่งซ้ำถ้า restart ตอนสายมาก
-    if now.weekday() <= 4 and now.hour == MORNING_HOUR and MORNING_MINUTE <= now.minute <= MORNING_MINUTE + 30:
-        print("🔄 ตรวจพบว่า bot restart ใกล้ช่วง 08:00 — ส่ง chart briefing ที่อาจพลาดไป")
-        try:
-            guild = discord.utils.get(bot.guilds)
-            if guild:
-                channel = find_channel(guild, CHART_CHANNEL_NAME)
-                if channel:
-                    label = (f"🌅 **Morning Chart Briefing — {now.strftime('%A %d/%m/%Y')}** "
-                              f"_(ส่งย้อนหลังเนื่องจาก bot เพิ่ง restart)_\n"
-                              f"EMA 50/200 + Stochastic | H1 · M30 · M15 · M5")
-                    await send_chart_analysis(channel, label)
-                    print("✅ catch-up chart briefing ส่งแล้ว")
-        except Exception as e:
-            print(f"❌ catch-up chart briefing error: {e}")
+    now = datetime.now(TZ_THAI)
+    from datetime import timedelta
+
+    # หารอบเวลาถัดไปจากลิสต์ BRIEFING_TIMES (ไม่ข้ามเสาร์-อาทิตย์ในการนับถอยหลัง แค่แสดงข้อมูล)
+    candidates = []
+    for h, m in BRIEFING_TIMES:
+        t = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if t <= now:
+            t += timedelta(days=1)
+        candidates.append(t)
+    next_slot = min(candidates)
+    diff = (next_slot - now).total_seconds() / 3600
+    times_str = ", ".join(f"{h:02d}:{m:02d}" for h, m in BRIEFING_TIMES)
+    print(f"📈 รอบเวลา Chart briefing: {times_str} UTC+7 (จันทร์-ศุกร์)")
+    print(f"⏭️  รอบถัดไปจะยิงใน {round(diff, 1)} ชม. ({next_slot.strftime('%d/%m %H:%M')} UTC+7)")
+
+    # ── Catch-up: ถ้า bot restart ในช่วง 0-30 นาทีหลังรอบเวลาใดรอบหนึ่ง (วันธรรมดา) ──
+    # จำกัดช่วงเวลาแคบเพื่อลดความเสี่ยงส่งซ้ำถ้า restart ตอนสายมาก
+    if now.weekday() <= 4:
+        for h, m in BRIEFING_TIMES:
+            if now.hour == h and m <= now.minute <= m + 30:
+                print(f"🔄 ตรวจพบว่า bot restart ใกล้รอบ {h:02d}:{m:02d} — ส่ง chart briefing ที่อาจพลาดไป")
+                try:
+                    guild = discord.utils.get(bot.guilds)
+                    if guild:
+                        channel = find_channel(guild, CHART_CHANNEL_NAME)
+                        if channel:
+                            label = make_briefing_label(now, restarted=True)
+                            await send_chart_analysis(channel, label)
+                            print("✅ catch-up chart briefing ส่งแล้ว")
+                except Exception as e:
+                    print(f"❌ catch-up chart briefing error: {e}")
+                break   # เจอรอบที่ตรงแล้ว ไม่ต้องเช็ครอบอื่นต่อ
 
 bot.run(BOT_TOKEN)
