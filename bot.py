@@ -326,31 +326,36 @@ async def morning_chart_briefing():
 # ============================================================
 class ChartView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=300)
+        super().__init__(timeout=None)   # ← Persistent: ปุ่มไม่หมดอายุอีกต่อไป
 
     @discord.ui.button(label="📊 วิเคราะห์ทั้ง 4 Timeframe",
-                       style=discord.ButtonStyle.primary, row=0)
+                       style=discord.ButtonStyle.primary, row=0,
+                       custom_id="chart_analyze_all")
     async def analyze_all(self, interaction: discord.Interaction,
                           button: discord.ui.Button):
         await interaction.response.defer(thinking=True)
         await self._fetch_and_analyze(interaction, ["H1", "M30", "M15", "M5"])
 
-    @discord.ui.button(label="H1",  style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="H1",  style=discord.ButtonStyle.secondary, row=1,
+                       custom_id="chart_h1")
     async def chart_h1(self, interaction, button):
         await interaction.response.defer(thinking=True)
         await self._fetch_single(interaction, "H1")
 
-    @discord.ui.button(label="M30", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="M30", style=discord.ButtonStyle.secondary, row=1,
+                       custom_id="chart_m30")
     async def chart_m30(self, interaction, button):
         await interaction.response.defer(thinking=True)
         await self._fetch_single(interaction, "M30")
 
-    @discord.ui.button(label="M15", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="M15", style=discord.ButtonStyle.secondary, row=1,
+                       custom_id="chart_m15")
     async def chart_m15(self, interaction, button):
         await interaction.response.defer(thinking=True)
         await self._fetch_single(interaction, "M15")
 
-    @discord.ui.button(label="M5",  style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="M5",  style=discord.ButtonStyle.secondary, row=1,
+                       custom_id="chart_m5")
     async def chart_m5(self, interaction, button):
         await interaction.response.defer(thinking=True)
         await self._fetch_single(interaction, "M5")
@@ -399,12 +404,24 @@ async def cmd_chart(interaction: discord.Interaction):
 # ============================================================
 #  BOT EVENTS
 # ============================================================
+persistent_view_registered = False
+
 @bot.event
 async def on_ready():
+    global persistent_view_registered
     print(f"✅ {bot.user} พร้อมใช้งานแล้วครับ!")
+
+    # ลงทะเบียน Persistent View — ทำครั้งเดียวพอ (on_ready อาจถูกเรียกซ้ำถ้า reconnect)
+    # ต้องทำทุกครั้งที่บอทเริ่มใหม่ ไม่งั้นปุ่มเก่า (ที่ส่งไปก่อน restart) จะกดไม่ได้
+    if not persistent_view_registered:
+        bot.add_view(ChartView())
+        persistent_view_registered = True
+        print("✅ Persistent ChartView registered — ปุ่มจะไม่หมดอายุอีกต่อไป")
+
     await tree.sync()
     print("✅ Slash commands synced!")
-    morning_chart_briefing.start()
+    if not morning_chart_briefing.is_running():
+        morning_chart_briefing.start()
     now = datetime.now(TZ_THAI)
     # หาเวลา 08:00 ถัดไป
     next_8 = now.replace(hour=MORNING_HOUR, minute=MORNING_MINUTE, second=0, microsecond=0)
